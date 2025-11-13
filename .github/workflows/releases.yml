@@ -20,6 +20,23 @@ jobs:
           echo "tag=$tag" >> $GITHUB_OUTPUT
           echo "name=$name" >> $GITHUB_OUTPUT
 
+      - name: 检查是否已发布过该版本
+        id: check_existing
+        run: |
+          existing=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ steps.get_release.outputs.tag }} \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" | jq -r '.id // empty')
+          if [ -n "$existing" ]; then
+            echo "该版本已存在，跳过构建。"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 如果已存在则跳过
+        if: steps.check_existing.outputs.skip == 'true'
+        run: echo "✅ 已存在 release，无需重复构建。"
+        continue-on-error: false
+
       - name: 克隆 aspnetcore 对应版本分支
         run: |
           git clone --depth=1 --branch "${{ steps.get_release.outputs.tag }}" https://github.com/dotnet/aspnetcore.git
