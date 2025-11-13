@@ -1,0 +1,59 @@
+name: Build and Release aspnetcore JS
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 获取最新 aspnetcore 发行版信息
+        id: get_release
+        run: |
+          latest=$(curl -s https://api.github.com/repos/dotnet/aspnetcore/releases/latest)
+          tag=$(echo "$latest" | jq -r '.tag_name')
+          name=$(echo "$latest" | jq -r '.name')
+          echo "tag=$tag" >> $GITHUB_OUTPUT
+          echo "name=$name" >> $GITHUB_OUTPUT
+
+      - name: 克隆 aspnetcore 对应版本分支
+        run: |
+          git clone --depth=1 --branch "${{ steps.get_release.outputs.tag }}" https://github.com/dotnet/aspnetcore.git
+          cd aspnetcore
+          git log -1 --oneline
+
+      - name: 安装最新 LTS 版本 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+
+      - name: 修改 tsconfig.json 中 target 为 ES2019
+        working-directory: aspnetcore/src/Components/Shared.JS
+        run: |
+          jq '.compilerOptions.target = "ES2019"' tsconfig.json > tmp.json && mv tmp.json tsconfig.json
+          echo "修改后的 tsconfig.json:"
+          cat tsconfig.json
+
+      - name: 构建项目
+        working-directory: aspnetcore/src/Components/Web.JS
+        run: |
+          npm ci
+          npm run build
+
+      - name: 收集构建产物
+        run: |
+          mkdir artifacts
+          cp -r aspnetcore/src/Components/Web.JS/dist/Release/* artifacts/
+          ls -la artifacts
+
+      - name: 发布 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.get_release.outputs.tag }}
+          name: ${{ steps.get_release.outputs.name }}
+          body: "Automated build of aspnetcore JavaScript assets for ${{ steps.get_release.outputs.tag }}"
+          files: |
+            artifacts/**
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
