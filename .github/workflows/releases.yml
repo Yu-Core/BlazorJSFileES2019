@@ -82,6 +82,26 @@ jobs:
           cp -r aspnetcore/src/Components/Web.JS/dist/Release/* artifacts/
           ls -la artifacts
 
+      - name: 重命名 JS 及 MAP 文件为 *.es2019.js / *.es2019.js.map
+        run: |
+          # 重命名普通 JS 文件
+          for f in artifacts/*.js; do
+            # 跳过 .js.map 文件
+            if [[ "$f" == *.js.map ]]; then
+              continue
+            fi
+            mv "$f" "${f%.js}.es2019.js"
+          done
+
+          # 重命名 JS.map 文件
+          for f in artifacts/*.js.map; do
+            base="${f%.js.map}"        # 去掉 .js.map
+            mv "$f" "${base}.es2019.js.map"
+          done
+
+          echo "重命名后的文件："
+          ls -la artifacts
+
       - name: 发布 Release
         uses: softprops/action-gh-release@v2
         with:
