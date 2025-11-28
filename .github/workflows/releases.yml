@@ -2,13 +2,21 @@ name: Build and Release aspnetcore JS
 
 on:
   workflow_dispatch:
+  schedule:
+    # 每月1号早上 8 点执行 (UTC 时间)
+    - cron: '0 8 1 * *'
 
 permissions:
   contents: write
 
 jobs:
-  build-and-release:
+
+  check:
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.get_release.outputs.tag }}
+      name: ${{ steps.get_release.outputs.name }}
+      skip: ${{ steps.check_existing.outputs.skip }}
 
     steps:
       - name: 获取最新 aspnetcore 发行版信息
@@ -32,14 +40,21 @@ jobs:
             echo "skip=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: 如果已存在则跳过
-        if: steps.check_existing.outputs.skip == 'true'
-        run: echo "✅ 已存在 release，无需重复构建。"
-        continue-on-error: false
+      - name: 输出检查结果
+        run: |
+          echo "Tag: ${{ steps.get_release.outputs.tag }}"
+          echo "Skip: ${{ steps.check_existing.outputs.skip }}"
 
+
+  build-and-release:
+    needs: check
+    if: needs.check.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+
+    steps:
       - name: 克隆 aspnetcore 对应版本分支
         run: |
-          git clone --depth=1 --branch "${{ steps.get_release.outputs.tag }}" https://github.com/dotnet/aspnetcore.git
+          git clone --depth=1 --branch "${{ needs.check.outputs.tag }}" https://github.com/dotnet/aspnetcore.git
           cd aspnetcore
           git log -1 --oneline
 
@@ -70,8 +85,8 @@ jobs:
       - name: 发布 Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.get_release.outputs.tag }}
-          name: ${{ steps.get_release.outputs.name }}
-          body: "Automated build of aspnetcore JavaScript assets for ${{ steps.get_release.outputs.tag }}"
+          tag_name: ${{ needs.check.outputs.tag }}
+          name: ${{ needs.check.outputs.name }}
+          body: "Automated build of aspnetcore JavaScript assets for ${{ needs.check.outputs.tag }}"
           files: |
             artifacts/**
