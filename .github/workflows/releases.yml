@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tagname:
-        description: 'Manually specify aspnetcore tag (optional, if left blank, the latest one will be automatically obtained)'
+        description: '手动指定aspnetcore标签（可选，如果留空，将自动获取最新标签）'
         required: false
         type: string
   schedule:
@@ -22,7 +22,8 @@ jobs:
       is_latest: ${{ steps.check-release.outputs.is_latest }}
 
     steps:
-      - id: check-release
+      - name: 获取aspnetcore releases信息
+        id: check-release
         run: |
           latest=$(curl -s https://api.github.com/repos/dotnet/aspnetcore/releases/latest)
 
@@ -109,23 +110,12 @@ jobs:
           cp -r aspnetcore/src/Components/Web.JS/dist/Release/* artifacts/
           ls -la artifacts
 
-      - name: 重命名 JS 及 MAP 文件为 *.es2019.js / *.es2019.js.map
+      - name: 重命名 JS 文件为 *.es2019.js
         run: |
-          # 重命名普通 JS 文件
-          for f in artifacts/*.js; do
-            # 跳过 .js.map 文件
-            if [[ "$f" == *.js.map ]]; then
-              continue
-            fi
-            mv "$f" "${f%.js}.es2019.js"
+          for f in artifacts/*; do
+            mv "$f" "${f%.*}.es2019.${f##*.}"
           done
-
-          # 重命名 JS.map 文件
-          for f in artifacts/*.js.map; do
-            base="${f%.js.map}"        # 去掉 .js.map
-            mv "$f" "${base}.es2019.js.map"
-          done
-
+          
           echo "重命名后的文件："
           ls -la artifacts
 
