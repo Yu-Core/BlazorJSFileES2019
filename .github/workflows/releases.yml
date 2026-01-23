@@ -112,10 +112,8 @@ jobs:
 
       - name: 重命名 JS 文件为 *.es2019.js
         run: |
-          for f in artifacts/*; do
-            mv "$f" "${f%.*}.es2019.${f##*.}"
-          done
-          
+          rename 's/\.js/\.es2019.js/' artifacts/*
+
           echo "重命名后的文件："
           ls -la artifacts
 
