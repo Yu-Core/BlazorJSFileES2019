@@ -8,4 +8,4 @@ Because blazor `blazor.x.js` does not support old devices, we need build blazor 
 2. Create `_framework` folder under the `wwwroot` folder. Copy `blazor.x.es2019.js` to `_framework`
 3. Edit `App.razor` or `index.html`. Replace `blazor.x.js` with `blazor.x.es2019.js`
 
-> If you fork this repository, please set `Read and write permissions` on Settings https://github.com/softprops/action-gh-release/issues/400#issuecomment-1870332450 , then run github actions
+>> If you want to specify the version, fork this repository and run GitHub actions

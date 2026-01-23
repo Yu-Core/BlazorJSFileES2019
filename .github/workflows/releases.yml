@@ -2,36 +2,63 @@ name: Build and Release aspnetcore JS
 
 on:
   workflow_dispatch:
+    inputs:
+      tagname:
+        description: '手动指定aspnetcore标签（可选，如果留空，将自动获取最新标签）'
+        required: false
+        type: string
   schedule:
-    # 每月1号早上 8 点执行 (UTC 时间)
+    # Execute at 8am on the 1st of each month (UTC time)
     - cron: '0 8 1 * *'
-
-permissions:
-  contents: write
 
 jobs:
 
   check:
     runs-on: ubuntu-latest
     outputs:
-      tag: ${{ steps.get_release.outputs.tag }}
-      name: ${{ steps.get_release.outputs.name }}
-      skip: ${{ steps.check_existing.outputs.skip }}
+      tag: ${{ steps.check-release.outputs.tag }}
+      name: ${{ steps.check-release.outputs.name }}
+      skip: ${{ steps.check-release.outputs.skip }}
+      is_latest: ${{ steps.check-release.outputs.is_latest }}
 
     steps:
-      - name: 获取最新 aspnetcore 发行版信息
-        id: get_release
+      - name: 获取aspnetcore releases信息
+        id: check-release
         run: |
           latest=$(curl -s https://api.github.com/repos/dotnet/aspnetcore/releases/latest)
-          tag=$(echo "$latest" | jq -r '.tag_name')
-          name=$(echo "$latest" | jq -r '.name')
-          echo "tag=$tag" >> $GITHUB_OUTPUT
-          echo "name=$name" >> $GITHUB_OUTPUT
 
-      - name: 检查是否已发布过该版本
-        id: check_existing
-        run: |
-          existing=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ steps.get_release.outputs.tag }} \
+          if [ -n "${{ inputs.tagname }}" ]; then
+            echo "使用手动指定的 tag: ${{ inputs.tagname }}"
+
+            release=$(curl -s https://api.github.com/repos/dotnet/aspnetcore/releases/tags/${{ inputs.tagname }})
+
+            if [ "$latest" == "$release" ]; then
+                is_latest="true"
+            else
+                is_latest="false"
+            fi
+          else
+            echo "未指定 tag，自动获取最新 release"
+
+            release=$latest
+            is_latest="true"
+          fi
+
+          echo "is_latest=$is_latest" >> $GITHUB_OUTPUT
+
+          tag=$(echo "$release" | jq -r '.tag_name // empty')
+          name=$(echo "$release" | jq -r '.name // empty')
+
+          if [ -n "$tag" ]; then
+            echo "tag=$tag" >> $GITHUB_OUTPUT
+            echo "name=$name" >> $GITHUB_OUTPUT
+          else
+            echo "标签名不存在或不正确，跳过构建。"
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          existing=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/tags/$tag \
             -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" | jq -r '.id // empty')
           if [ -n "$existing" ]; then
             echo "该版本已存在，跳过构建。"
@@ -42,9 +69,10 @@ jobs:
 
       - name: 输出检查结果
         run: |
-          echo "Tag: ${{ steps.get_release.outputs.tag }}"
-          echo "Skip: ${{ steps.check_existing.outputs.skip }}"
-
+          echo "Tag: ${{ steps.check-release.outputs.tag }}"
+          echo "Name: ${{ steps.check-release.outputs.name }}"
+          echo "Skip: ${{ steps.check-release.outputs.skip }}"
+          echo "Is Latest: ${{ steps.check-release.outputs.is_latest }}"
 
   build-and-release:
     needs: check
@@ -82,31 +110,23 @@ jobs:
           cp -r aspnetcore/src/Components/Web.JS/dist/Release/* artifacts/
           ls -la artifacts
 
-      - name: 重命名 JS 及 MAP 文件为 *.es2019.js / *.es2019.js.map
+      - name: 重命名 JS 文件为 *.es2019.js
         run: |
-          # 重命名普通 JS 文件
-          for f in artifacts/*.js; do
-            # 跳过 .js.map 文件
-            if [[ "$f" == *.js.map ]]; then
-              continue
-            fi
-            mv "$f" "${f%.js}.es2019.js"
-          done
-
-          # 重命名 JS.map 文件
-          for f in artifacts/*.js.map; do
-            base="${f%.js.map}"        # 去掉 .js.map
-            mv "$f" "${base}.es2019.js.map"
+          for f in artifacts/*.js*; do
+            mv "$f" "${f/.js/.es2019.js}"
           done
 
           echo "重命名后的文件："
           ls -la artifacts
 
+      # Update to Github Releases
       - name: 发布 Release
-        uses: softprops/action-gh-release@v2
+        uses: svenstaro/upload-release-action@v2
         with:
-          tag_name: ${{ needs.check.outputs.tag }}
-          name: ${{ needs.check.outputs.name }}
-          body: "Automated build of aspnetcore JavaScript assets for ${{ needs.check.outputs.tag }}"
-          files: |
-            artifacts/**
+            repo_token: ${{ secrets.GITHUB_TOKEN }}
+            file: "artifacts/*"
+            file_glob: true
+            release_name: ${{ needs.check.outputs.name }}
+            tag: ${{ needs.check.outputs.tag }}
+            body: "Automated build of aspnetcore JavaScript assets for ${{ needs.check.outputs.tag }}"
+            make_latest: ${{ needs.check.outputs.is_latest }}
